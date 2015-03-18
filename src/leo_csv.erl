@@ -25,16 +25,19 @@
 %%======================================================================
 -module(leo_csv).
 
--export([parse/2]).
+-export([parse/3, parse/4]).
 
 %%----------------------------------------------------------------------
 %% API
 %%----------------------------------------------------------------------
-%% @doc Retrieve log-appneder(s)
-%% @private
--spec(parse(CallbackFun, Opts) ->
-             ok | {error, any()} when CallbackFun::function(),
-                                      Opts::[proplists:property()]).
-parse(_CallbackFun, _Opts) ->
+%% @doc Parse a CSV file
+-spec(parse(Filename, Opts, CallbackFun) ->
+             ok | {error, any()} when Filename::file:filename_all(),
+                                      Opts::[proplists:property()],
+                                      CallbackFun::function()).
+parse(Filename, Opts, CallbackFun) ->
+    parse(Filename, Opts, CallbackFun, []).
+
+parse(_Filename, _Opts, _CallbackFun, _CallbackFunState) ->
     ok.
 
