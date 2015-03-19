@@ -197,24 +197,26 @@ parse_csv3_test() ->
     end,
     parse(File, Opts, Fun).
 
-parse_big_csv_test() ->
-    File = "../test/english_indices_of_deprivation_2010.csv",
-    Opts = [{read_ahead, 1048576}, {column_header, true}],
-    Fun = fun(true, _, Line) ->
-            %% EOF
-            io:format(user, "[debug]line:~p~n",[Line - 1]),
-            Line;
-        (_, Fields, 32482 = Line) ->
-            %% Last Line
-            io:format(user, "[debug]fields at the last row:~p~n",[Fields]),
-            Line + 1;
-        (_,_,Line) ->
-            %% Other Lines
-            Line + 1
-    end,
-    {Time, _} = timer:tc(leo_csv, parse, [File, Opts, Fun, 1]),
-    io:format(user, "[debug]time:~p(sec)~n", [Time / 1000000]),
-    ok.
+parse_big_csv_test_() ->
+    {timeout, 60, fun() ->
+        File = "../test/english_indices_of_deprivation_2010.csv",
+        Opts = [{read_ahead, 1048576}, {column_header, true}],
+        Fun = fun(true, _, Line) ->
+                %% EOF
+                io:format(user, "[debug]line:~p~n",[Line - 1]),
+                Line;
+            (_, Fields, 32482 = Line) ->
+                %% Last Line
+                io:format(user, "[debug]fields at the last row:~p~n",[Fields]),
+                Line + 1;
+            (_,_,Line) ->
+                %% Other Lines
+                Line + 1
+        end,
+        {Time, _} = timer:tc(leo_csv, parse, [File, Opts, Fun, 1]),
+        io:format(user, "[debug]time:~p(sec)~n", [Time / 1000000]),
+        ok
+    end}.
 
 divide_big_csv_test_() ->
     {timeout, 60, fun() ->
