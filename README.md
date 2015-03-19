@@ -1,6 +1,8 @@
 leo_csv
 =======
 
+[![Build Status](https://secure.travis-ci.org/leo-project/leo_csv.png?branch=master)](http://travis-ci.org/leo-project/leo_csv)
+
 Overview
 --------
 
