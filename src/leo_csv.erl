@@ -229,15 +229,7 @@ divide_big_csv_test_() ->
         Fun = fun(true, _, {IoDevice, _, _}) ->
                 %% EOF
                 ok = file:close(IoDevice);
-            (_, Fields, {undef, SplitSize, _}) ->
-                %% First
-                TmpFile = string:strip(os:cmd("mktemp --suffix=.leofs"), right, $\n),
-                {ok, TmpIoDev} = file:open(TmpFile, [write, raw, append, delayed_write]),
-                Line = string:join(Fields, ","),
-                ok = file:write(TmpIoDev, Line),
-                ok = file:write(TmpIoDev, "\n"),
-                {TmpIoDev, SplitSize, string:len(Line)};
-            (_, Fields, {IoDevice, SplitSize, CurrentSize}) when CurrentSize >= SplitSize ->
+           (_, Fields, {IoDevice, SplitSize, CurrentSize}) when CurrentSize >= SplitSize ->
                 %% Create a new file when the file size is over SplitSize
                 ok = file:close(IoDevice),
                 TmpFile = string:strip(os:cmd("mktemp --suffix=.leofs"), right, $\n),
@@ -253,9 +245,11 @@ divide_big_csv_test_() ->
                 ok = file:write(IoDevice, "\n"),
                 {IoDevice, SplitSize, string:len(Line) + CurrentSize}
         end,
-        parse(File, Opts, Fun, {undef, FileSize div DivideNum, 0}),
-        DevidedFiles = os:cmd("ls /tmp/*.leofs"),
-        ?assertEqual(DivideNum, length(string:tokens(DevidedFiles, [$\n])))
+        TmpFile = string:strip(os:cmd("mktemp --suffix=.leofs"), right, $\n),
+        {ok, TmpIoDev} = file:open(TmpFile, [write, raw, append, delayed_write]),
+        parse(File, Opts, Fun, {TmpIoDev, FileSize div DivideNum, 0}),
+        DividedFiles = os:cmd("ls /tmp/*.leofs"),
+        ?assertEqual(DivideNum, length(string:tokens(DividedFiles, [$\n])))
     end}.
 
 gen_parse_csv_test_callback(ExpectedLine) ->
