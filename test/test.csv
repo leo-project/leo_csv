@@ -4,3 +4,4 @@ id, name, paradigm, type system, implement, built-in concurrency support
 3,C,procedual,"unsafe, explicit, week, static",AOT compile,"no"
 4,D,multiparadigm,"explicit, strong, static",AOT compile,"yes"
 5,Erlang,functional,"implicit, strong, dynamic","interpreter, AOT compile with HiPE","yes"
+6,なでしこ,object oriented,"implicit, dynamic",interpreter,"no"

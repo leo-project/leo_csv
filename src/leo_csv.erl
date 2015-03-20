@@ -181,7 +181,7 @@ parse_tsv_line_test() ->
 parse_csv_test() ->
     File = "../test/test.csv",
     Opts = [],
-    Fun = gen_parse_csv_test_callback(6),
+    Fun = gen_parse_csv_test_callback(7),
     parse(File, Opts, Fun, 1).
 
 parse_csv2_test() ->
@@ -270,7 +270,7 @@ filter_csv2_test() ->
         fun("multiparadigm") ->
             ok;
         (_) ->
-            {error, concurrency_not_supported}
+            {error, not_multiparadigm}
         end,
     HasSafeTypeSystem =
         fun(TypeSystemCSV) when is_list(TypeSystemCSV), length(TypeSystemCSV) > 0 ->
@@ -283,6 +283,19 @@ filter_csv2_test() ->
             {error, can_not_be_safe}
         end,
     FilterFuns = [undef, undef, HasMultiParadigm, HasSafeTypeSystem, undef, undef],
+    Fun = gen_filter_csv_test_callback(FilterFuns),
+    {ok, Filtered} = parse(File, Opts, Fun, []),
+    ?assertEqual(1, length(Filtered)).
+
+filter_csv_unicode_test() ->
+    File = "../test/test.csv",
+    Opts = [{column_header, true}],
+    IsNadesiko = fun("なでしこ") ->
+                       ok;
+                  (_) ->
+                       {error, not_nadesiko}
+               end,
+    FilterFuns = [undef, IsNadesiko, undef, undef, undef, undef],
     Fun = gen_filter_csv_test_callback(FilterFuns),
     {ok, Filtered} = parse(File, Opts, Fun, []),
     ?assertEqual(1, length(Filtered)).
