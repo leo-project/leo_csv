@@ -204,18 +204,18 @@ parse_big_csv_test_() ->
         Opts = [{read_ahead, 1048576}, {column_header, true}],
         Fun = fun(true, _, _, Line) ->
                 %% EOF
-                io:format(user, "[debug]line:~p~n",[Line - 1]),
+                io:format(user, "[test]line:~p~n",[Line - 1]),
                 {ok, Line - 1};
             (_, Fields, _, 32482 = Line) ->
                 %% Last Line
-                io:format(user, "[debug]fields at the last row:~p~n",[Fields]),
+                io:format(user, "[test]fields at the last row:~p~n",[Fields]),
                 {ok, Line + 1};
             (_,_,_,Line) ->
                 %% Other Lines
                 {ok, Line + 1}
         end,
         {Time, _} = timer:tc(leo_csv, parse, [File, Opts, Fun, 1]),
-        io:format(user, "[debug]time:~p(sec)~n", [Time / 1000000]),
+        io:format(user, "[test]time:~p(sec)~n", [Time / 1000000]),
         ok
     end}.
 
@@ -266,25 +266,30 @@ filter_csv_test() ->
 filter_csv2_test() ->
     File = "../test/test.csv",
     Opts = [{column_header, true}],
-    HasConcurrencySupport = fun("yes") ->
-                       ok;
-                  (_) ->
-                       {error, not_supported_concurrency}
-               end,
-    HasMultiParadigm = fun("multiparadigm") ->
-                       ok;
-                  (_) ->
-                       {error, not_multiparadigm}
-               end,
-
-    FilterFuns = [undef, undef, HasMultiParadigm, undef, undef, HasConcurrencySupport],
+    HasMultiParadigm =
+        fun("multiparadigm") ->
+            ok;
+        (_) ->
+            {error, concurrency_not_supported}
+        end,
+    HasSafeTypeSystem =
+        fun(TypeSystemCSV) when is_list(TypeSystemCSV), length(TypeSystemCSV) > 0 ->
+            TypeSystemFeatures = string:tokens(TypeSystemCSV, ","),
+            case lists:member("safe", TypeSystemFeatures) of
+                true -> ok;
+                _ -> {error, can_not_be_safe}
+            end;
+        (_) ->
+            {error, can_not_be_safe}
+        end,
+    FilterFuns = [undef, undef, HasMultiParadigm, HasSafeTypeSystem, undef, undef],
     Fun = gen_filter_csv_test_callback(FilterFuns),
     {ok, Filtered} = parse(File, Opts, Fun, []),
-    ?assertEqual(2, length(Filtered)).
+    ?assertEqual(1, length(Filtered)).
 
 gen_parse_csv_test_callback(ExpectedLine) ->
     fun(EOF, _Fields, _RawLine, Line) ->
-        io:format(user, "[debug]fields:~p~n", [_Fields]),
+        io:format(user, "[test]fields:~p~n", [_Fields]),
         case EOF of
             true ->
                 ?assertEqual(ExpectedLine, Line - 1);
@@ -304,7 +309,7 @@ gen_filter_csv_test_callback(FilterFuns) ->
                     ok ->
                         {ok, [Fields|Acc]};
                     {error, {{field, Field},{reason, Reason}}}->
-                        io:format(user, "[debug]field:~p reason:~p~n", [Field, Reason]),
+                        io:format(user, "[test]field:~p reason:~p~n", [Field, Reason]),
                         {ok, Acc}
                 end
         end;
