@@ -45,7 +45,7 @@
 -type callback_fun() :: fun((EOF::boolean(),
                              Columns::list(string()),
                              RawLine::string(),
-                             CallbackFunState::any()) -> NewState::any()|abort).
+                             CallbackFunState::any()) -> {ok|abort, NewState::any()}).
 
 -ifdef(TEST).
 -compile(export_all).
@@ -57,9 +57,9 @@
 %%----------------------------------------------------------------------
 %% @doc Parse a CSV file
 -spec(parse(Filename, Opts, CallbackFun) ->
-             ok when Filename::file:filename_all(),
-                     Opts::parse_options(),
-                     CallbackFun::callback_fun()).
+             {ok|abort, any()} when Filename::file:filename_all(),
+                                    Opts::parse_options(),
+                                    CallbackFun::callback_fun()).
 parse(Filename, Opts, CallbackFun) when is_function(CallbackFun) ->
     parse(Filename, Opts, CallbackFun, []).
 
@@ -93,25 +93,23 @@ skip_lines(F, SkipCount) ->
 
 %% @private
 -spec(parse(F, Line, Delimiter, Quote, MaxLines, CallbackFun, CallbackFunState) ->
-             ok when F::file:io_device(),
-                     Line::eof|{ok, string()|binary()}|{error, any()},
-                     Delimiter::char(),
-                     Quote::char(),
-                     MaxLines::integer(),
-                     CallbackFun::callback_fun(),
-                     CallbackFunState::any()).
+             {ok|abort, any()} when F::file:io_device(),
+                                    Line::eof|{ok, string()|binary()}|{error, any()},
+                                    Delimiter::char(),
+                                    Quote::char(),
+                                    MaxLines::integer(),
+                                    CallbackFun::callback_fun(),
+                                    CallbackFunState::any()).
 parse(_F, eof, _Delimiter, _Quote, _MaxLines, CallbackFun, CallbackFunState) ->
-    CallbackFun(true, [], [], CallbackFunState),
-    ok;
+    CallbackFun(true, [], [], CallbackFunState);
 parse(_F, _Line, _Delimiter, _Quote, 0, CallbackFun, CallbackFunState) ->
-    CallbackFun(true, [], [], CallbackFunState),
-    ok;
+    CallbackFun(true, [], [], CallbackFunState);
 parse(F, {ok, Line}, Delimiter, Quote, MaxLines, CallbackFun, CallbackFunState) ->
     Fields = parse_line(Line, Delimiter, Quote),
     case CallbackFun(false, Fields, Line, CallbackFunState) of
-        abort ->
-            ok;
-        NewState ->
+        {abort, _} = Ret ->
+            Ret;
+        {ok, NewState}->
             parse(F, file:read_line(F), Delimiter, Quote, MaxLines - 1, CallbackFun, NewState)
     end.
 
@@ -195,8 +193,8 @@ parse_csv2_test() ->
 parse_csv3_test() ->
     File = "../test/test.csv",
     Opts = [],
-    Fun = fun(_, _, _, _) ->
-        abort
+    Fun = fun(_, _, _, State) ->
+        {abort, State}
     end,
     parse(File, Opts, Fun).
 
@@ -207,14 +205,14 @@ parse_big_csv_test_() ->
         Fun = fun(true, _, _, Line) ->
                 %% EOF
                 io:format(user, "[debug]line:~p~n",[Line - 1]),
-                Line;
+                {ok, Line - 1};
             (_, Fields, _, 32482 = Line) ->
                 %% Last Line
                 io:format(user, "[debug]fields at the last row:~p~n",[Fields]),
-                Line + 1;
+                {ok, Line + 1};
             (_,_,_,Line) ->
                 %% Other Lines
-                Line + 1
+                {ok, Line + 1}
         end,
         {Time, _} = timer:tc(leo_csv, parse, [File, Opts, Fun, 1]),
         io:format(user, "[debug]time:~p(sec)~n", [Time / 1000000]),
@@ -231,18 +229,19 @@ divide_big_csv_test_() ->
         os:cmd("rm -f /tmp/*.leofs"),
         Fun = fun(true, _, _, {IoDevice, _, _}) ->
                 %% EOF
-                ok = file:close(IoDevice);
+                ok = file:close(IoDevice),
+                {ok, undef};
            (_, _Fields, RawLine, {IoDevice, SplitSize, CurrentSize}) when CurrentSize >= SplitSize ->
                 %% Create a new file when the file size is over SplitSize
                 ok = file:close(IoDevice),
                 TmpFile = string:strip(os:cmd("mktemp --suffix=.leofs"), right, $\n),
                 {ok, TmpIoDev} = file:open(TmpFile, [write, raw, append, delayed_write]),
                 ok = file:write(TmpIoDev, RawLine),
-                {TmpIoDev, SplitSize, string:len(RawLine)};
+                {ok, {TmpIoDev, SplitSize, string:len(RawLine)}};
             (_, _Fields, RawLine, {IoDevice, SplitSize, CurrentSize}) ->
                 %% Append a new line to a current tmp file
                 ok = file:write(IoDevice, RawLine),
-                {IoDevice, SplitSize, string:len(RawLine) + CurrentSize}
+                {ok, {IoDevice, SplitSize, string:len(RawLine) + CurrentSize}}
         end,
         TmpFile = string:strip(os:cmd("mktemp --suffix=.leofs"), right, $\n),
         {ok, TmpIoDev} = file:open(TmpFile, [write, raw, append, delayed_write]),
@@ -250,6 +249,38 @@ divide_big_csv_test_() ->
         DividedFiles = os:cmd("ls /tmp/*.leofs"),
         ?assertEqual(DivideNum, length(string:tokens(DividedFiles, [$\n])))
     end}.
+
+filter_csv_test() ->
+    File = "../test/test.csv",
+    Opts = [{column_header, true}],
+    IsErlang = fun("Erlang") ->
+                       ok;
+                  (_) ->
+                       {error, not_erlang}
+               end,
+    FilterFuns = [undef, IsErlang, undef, undef, undef, undef],
+    Fun = gen_filter_csv_test_callback(FilterFuns),
+    {ok, Filtered} = parse(File, Opts, Fun, []),
+    ?assertEqual(1, length(Filtered)).
+
+filter_csv2_test() ->
+    File = "../test/test.csv",
+    Opts = [{column_header, true}],
+    HasConcurrencySupport = fun("yes") ->
+                       ok;
+                  (_) ->
+                       {error, not_supported_concurrency}
+               end,
+    HasMultiParadigm = fun("multiparadigm") ->
+                       ok;
+                  (_) ->
+                       {error, not_multiparadigm}
+               end,
+
+    FilterFuns = [undef, undef, HasMultiParadigm, undef, undef, HasConcurrencySupport],
+    Fun = gen_filter_csv_test_callback(FilterFuns),
+    {ok, Filtered} = parse(File, Opts, Fun, []),
+    ?assertEqual(2, length(Filtered)).
 
 gen_parse_csv_test_callback(ExpectedLine) ->
     fun(EOF, _Fields, _RawLine, Line) ->
@@ -260,7 +291,37 @@ gen_parse_csv_test_callback(ExpectedLine) ->
             _ ->
                 void
         end,
-        Line + 1
+        {ok, Line + 1}
     end.
+
+gen_filter_csv_test_callback(FilterFuns) ->
+    fun(false, Fields, _RawLine, Acc) ->
+        case length(FilterFuns) =/= length(Fields) of
+            true ->
+                {abort, Acc};
+            false ->
+                case do_filter(Fields, FilterFuns) of
+                    ok ->
+                        {ok, [Fields|Acc]};
+                    {error, {{field, Field},{reason, Reason}}}->
+                        io:format(user, "[debug]field:~p reason:~p~n", [Field, Reason]),
+                        {ok, Acc}
+                end
+        end;
+       (true,_,_,Acc) ->
+            {ok, Acc}
+    end.
+
+do_filter([], []) ->
+    ok;
+do_filter([Field|FT], [FilterFun|FFT]) when is_function(FilterFun) ->
+    case FilterFun(Field) of
+        ok ->
+            do_filter(FT, FFT);
+        {error, Reason} ->
+            {error, {{field, Field}, {reason, Reason}}}
+    end;
+do_filter([_|FT], [_|FFT]) ->
+    do_filter(FT, FFT).
 
 -endif.
